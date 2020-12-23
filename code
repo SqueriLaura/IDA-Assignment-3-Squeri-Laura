@@ -1,0 +1,214 @@
+---
+title: "IDA Assignment 3"
+author: "Squeri Laura S2117214"
+date: "12/23/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(mice)
+require(JointAI)
+library(here)
+
+```
+## R Markdown
+
+```{r Exercise 1.a}
+# percentage of incomplete cases:
+(length(nhanes[,1])-sum(complete.cases(nhanes)))/length(nhanes[,1])
+# percentage of missing values
+sum(is.na(nhanes))/(25*4)
+# percentage of missing values for each variable
+sum(is.na(nhanes$bmi))/(25)
+sum(is.na(nhanes$hyp))/(25)
+sum(is.na(nhanes$chl))/(25)
+
+```
+The proportion of variance due to missing data for each parameter can be seen
+in the ests output in the riv column
+age = 0.3489886
+hyp = 0.3293512
+chl = 0.3427071
+The parameter that seems to be affected the most is age, however, the other 
+variables don't have a much lower lambda.
+```{r Exercise 1.b}
+
+plot_all(nhanes)
+
+imp0 = mice(nhanes,maxit = 0, seed = 1)
+fits = with(imp0, lm(bmi ~ age + hyp + chl))
+ests = pool(fits)
+ests
+
+summary(ests, conf.int = TRUE)[, c(2,3,7,8)]
+pool.r.squared(fits, adjusted = TRUE)
+```
+With seed 2 now age is at least 0.1 more affected by the missing data values than the other variables, seed 3 looks very similar to seed 1 and seed 4 shows chl as the variable which was affected the most while ages is second to it. Seed 5 showed hyp as the most affected variable and seed 6 showed age again as the being the most affected  this time with 0.65. Therefore, the conclusions do not completely remain the same, however, we cannot deny that age was the most affected variable 2/3 times.
+```{r exercise 1c}
+# changing the seed
+pool(with(mice(nhanes, printFlag = FALSE, seed = 2),lm(bmi ~ age + hyp + chl)))
+pool(with(mice(nhanes, printFlag = FALSE, seed = 3),lm(bmi ~ age + hyp + chl)))
+pool(with(mice(nhanes, printFlag = FALSE, seed = 4),lm(bmi ~ age + hyp + chl)))
+pool(with(mice(nhanes, printFlag = FALSE, seed = 5),lm(bmi ~ age + hyp + chl)))
+pool(with(mice(nhanes, printFlag = FALSE, seed = 6),lm(bmi ~ age + hyp + chl)))
+
+```
+
+In this substask we only need to calculate the M= 100 because M = 5 are shown in sub task c (default M = 5) in the case M = 100 the variable age is shown all the time as the most affected by the non response. Therefore I would prefer the M = 100 analysis, because the results seem more constant.
+```{r exercise 1d}
+
+#M = 100
+pool(with(mice(nhanes, printFlag = FALSE, seed = 2, m = 100),lm(bmi ~ age + hyp + chl)))
+pool(with(mice(nhanes, printFlag = FALSE, seed = 3, m = 100),lm(bmi ~ age + hyp + chl)))
+pool(with(mice(nhanes, printFlag = FALSE, seed = 4, m = 100),lm(bmi ~ age + hyp + chl)))
+pool(with(mice(nhanes, printFlag = FALSE, seed = 5, m = 100),lm(bmi ~ age + hyp + chl)))
+pool(with(mice(nhanes, printFlag = FALSE, seed = 6, m = 100),lm(bmi ~ age + hyp + chl)))
+
+
+
+```
+
+## Including Plots
+For this task we need to look at the effect that acknowledging/not acknowledging parameter uncertainty in the first step of multiple imputation has on the coverage of its confidence intervals. From this analysis we see that when we acknowledge parameter uncertainty (norm.boot),
+the true value of the parameter is captured 0.98 of the time in the 0.95 confidence interval.While when using a method that does not acknowledge this uncertainty the true value is contained only 0.94 of the times.
+
+```{r exercise 2}
+for (i in 1:100){
+  imp = mice(dataex2[,,i], print=FALSE, seed = 1, m = 20, method = "norm.nob")
+  fit = with(imp,lm(Y~X))
+  ests.1 = pool(fit)
+  a = summary(ests.1, conf.int = TRUE)[, c(2,3,7,8)]
+  lower_bound[i] = a[2,2]
+  upper_bound[i] = a[2,3]
+}
+1- mean(lower_bound < 3 & upper_bound >3)
+
+
+for (i in 1:100){
+  imp = mice(dataex2[,,i], print=FALSE, seed = 1, m = 20, method = "norm.boot")
+  fit = with(imp,lm(Y~X))
+  ests.1 = pool(fit)
+  a = summary(ests.1, conf.int = TRUE)[, c(2,3,7,8)]
+  lower_bound[i] = a[2,2]
+  upper_bound[i] = a[2,3]
+}
+1-mean(lower_bound < 3 & upper_bound >3)
+
+```
+We add the interaction model only towards the end. The interaction has a 
+confidence interval of (0.642302; 0.8677715) which is quite narrow, with 
+an estimate of 0.7550367.
+```{r exercise 4.a}
+
+first = summary(pool(with(mice(dataex4, printFlag = FALSE, m = 50, seed = 1), 
+                  lm(y~x1 + x2 + x1*x2))), conf.int = TRUE)
+first[, c(1,2,7,8)]
+```
+
+For the next sub tasks we insert another column to the incomplete data set 
+directly calculating the interaction, which will ne not available if the 
+corresponding x1 values are not available. 
+```{r exercise 4}
+
+
+data_int = dataex4
+data_int$x1x2 = data_int$x1 * data_int$x2
+data_int
+```
+For this sub task we use passive imputation to impute the interaction variable
+We set this in the prediction matrix by specifying that the variables x1 an x2
+will not count as predictors for the interaction.In this case the interaction effect ha s a confidence interval of (0.6591274;0.8940076), with an estimate of 0.7765675 which is very slightly larger and higher than the one in the previous sub task
+```{r exercise 4.b}
+
+ini = mice(data_int, maxit = 0, print = FALSE)
+meth = ini$meth
+predic = ini$predic
+predic[c("x1","x2"), "x1x2"] = 0
+meth["x1x2"] = "~I(x1x2)"
+predic
+
+second = summary(pool(with(mice(data_int, meth = meth, pred = predic, seed = 1, maxit = 20, 
+                       m = 50, print = FALSE), lm(y~x1 +x2 + x1*x2))), 
+        conf.int = TRUE)
+second[, c(1,2,7,8)]
+
+```
+In this sub task the interaction variable will be predicted like any other variable
+so we do not need a specified prediction matrix. 
+In this case the confidence has become smaller than the previous ones with 
+(0.9303479;1.105238) and a higher estimate 1.017793
+```{r exercise 4.c}
+
+third = summary(pool(with(mice(data_int, printFlag = FALSE, m = 50, seed = 1), 
+                  lm(y ~ x1 + x2 + x1x2))), conf.int = TRUE)
+
+third[, c(1,2,7,8)]
+```
+The conceptual drawback of the "just another variable method" is that the 
+interaction effect is directly calculated from x1 and x2 and therefore should
+not differ from x1*x2, but if we impute the interaction from one of the donor sets will not be equal to the chosen x1 variable multiplied by the x2 variable. It would give less meaning to the interaction effect.
+```{r exercise 5}
+
+#checking where the missing data is
+#we can see that we have no missing data in weight, gender, age and race
+md_pattern(NHANES2, pattern = FALSE, color = c('#34111b', '#e30f41'))
+
+#check whether the given method is good for all variables(seems yes)
+par(mar = c(3, 3, 2,1), mpg = c(2, 0,6, 0))
+plot_all(NHANES2, breaks = 30, ncol = 4)
+
+#In the predictor matrix we can see that the variables with no missing data will 
+# will not be predicted by other variables and M = 5.
+imp5 = mice(NHANES2, maxit = 0)
+imp5
+
+# To see whether the imputed values fit we look at various plots.
+# in the strip plot the blue data is the original data and the red dots are the 
+# imputed ones, which seem to follow the blue dots pattern. Because there are so 
+# many data points it's best to look also at the boxplots, and also here we see 
+# nothing suspicious. In the density plot however we notice that in the height(hgt) 
+# and the (WC) the imputed values do not follow the blue lines as clear as in the
+# other variables.
+stripplot(imp5)
+bwplot(imp5)
+densityplot(imp5)
+
+#so we take a closer look at these plots
+densityplot(imp5, ~hgt|gender)
+# gender seem to explain the difference between the obeserved and imputed values.
+densityplot(imp5, ~WC|gender)
+densityplot(imp5, ~WC|race)
+xyplot(imp5, WC~wgt|gender, pch = c(1,20))
+# from the following plots it seems that the imputed values for females were 
+# (spiegel) the original data set the best.
+xyplot(imp5, hgt~race|gender, pch = c(1,20))
+xyplot(imp5, hgt~wgt|gender, pch = c(1,20))
+
+
+imp5_m = mice(NHANES2, printFlag = FALSE,m = 20, seed = 1)
+fit5 = with(imp5_m, lm(wgt ~ gender + age + hgt + WC ))
+fit5
+est5 = pool(fit5)
+est5
+summary(est5, conf.int = TRUE)
+#analyze the information contained in the object fit5
+comp1 <-complete(imp5_m, 1)
+plot(fit5$analyses[[1]]$fitted.values,residuals(fit5$analyses[[1]]),xlab = "Fitted values", ylab = "Residuals")
+# on the y axis we have th residuals and on the x axis the Fitted  values. 
+# The Residuals seem to center well around zero and there are no clusters in sight.
+# however, there are many outliers.
+# The following plot mgt explain some of the outliers on the higher weight end
+plot(comp1$wgt~comp1$WC, xlab = "Waist circumference", ylab = "weight")
+#jsut shows correlation between weight and height
+plot(comp1$wgt~comp1$hgt, xlab = "height", ylab = "weight")
+
+#also the QQ plot looks good(????)
+qqnorm(rstandard(fit5$analyses[[1]]), xlim =c(-4, 4), ylim =c(-6, 6))
+qqline(rstandard(fit5$analyses[[1]]), col = 2)
+```
